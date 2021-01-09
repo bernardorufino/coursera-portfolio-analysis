@@ -5,6 +5,10 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import riskkit as erk
 import scipy.stats as stats
+import multiprocessing as mp
+import itertools
+import os
+import pickle
 from scipy.stats.mstats import gmean
 
 def fformat(f):
@@ -53,6 +57,8 @@ def play_game(f, stop, reward_multiplier=2.5, series=False,
         iterations = [i]
         values = [v]
     if f > 0:
+        #millis = int(round(time.time() * 1000))
+        np.random.seed()
         while i < max_iterations and v > 0 and not stop(i, v):
             won = np.random.uniform() < .5
             v *= gain_multiplier if won else loss_multiplier
@@ -97,3 +103,32 @@ def plot_quantile(df):
     ax.grid(b=True, which='both', alpha=.5)
     ax.legend(loc='upper left', bbox_to_anchor=(1,1))
     return ax
+
+def printif(condition, *args, **kwargs):
+    if condition:
+        print(*args, **kwargs)
+
+STOP_MODES = {
+    'doubled': lambda i, v: v >= 2
+}
+        
+def simulate_single(args):
+    f, stop = args
+    ans = play_game(f, STOP_MODES[stop], series=False)
+    return ans['length'], ans['value']     
+        
+def simulate(simulations, stop_mode, fs, processes=1, display=True):
+    pool = mp.Pool(processes)
+    f_lengths = []
+    f_values = []
+    printif(display, '_' * len(fs))
+    for f in fs:
+        lengths = []
+        values = []
+        ans = pool.imap(simulate_single, itertools.repeat((f, stop_mode), simulations))
+        lengths, values = map(list, zip(*ans))
+        f_lengths.append(pd.Series(lengths))
+        f_values.append(pd.Series(values))
+        printif(display, '>', end='')
+    printif(display)
+    return f_lengths, f_values
